@@ -1,0 +1,139 @@
+import os
+import json
+import hashlib
+import base64
+import datetime
+from cryptography.fernet import Fernet
+from getpass import getpass
+
+# Generate a key for encryption/decryption
+KEY_FILE = 'secret.key'
+
+def load_key():
+    if not os.path.exists(KEY_FILE):
+        key = Fernet.generate_key()
+        with open(KEY_FILE, 'wb') as key_file:
+            key_file.write(key)
+    else:
+        with open(KEY_FILE, 'rb') as key_file:
+            key = key_file.read()
+    return key
+
+key = load_key()
+fernet = Fernet(key)
+
+DATABASE = 'data.json'
+USERS = {'admin': 'admin123', 'user': 'user123'}
+
+# Load or initialize database
+if os.path.exists(DATABASE):
+    with open(DATABASE, 'r') as f:
+        db = json.load(f)
+else:
+    db = {"documents": []}
+
+def save_db():
+    with open(DATABASE, 'w') as f:
+        json.dump(db, f, indent=4)
+
+def encrypt_data(data):
+    return fernet.encrypt(data.encode()).decode()
+
+def decrypt_data(data):
+    return fernet.decrypt(data.encode()).decode()
+
+def calculate_checksum(data):
+    return hashlib.sha256(data.encode()).hexdigest()
+
+def create_document():
+    title = input("Enter title: ")
+    content = input("Enter content: ")
+    encrypted = encrypt_data(content)
+    checksum = calculate_checksum(content)
+    timestamp = datetime.datetime.now().isoformat()
+    db["documents"].append({
+        "title": title,
+        "content": encrypted,
+        "checksum": checksum,
+        "timestamp": timestamp,
+        "last_modified": timestamp
+    })
+    save_db()
+    print("Document created successfully.")
+
+def read_documents():
+    for i, doc in enumerate(db["documents"], 1):
+        print(f"{i}. {doc['title']} - Created: {doc['timestamp']}")
+
+def view_document():
+    read_documents()
+    idx = int(input("Select document to view: ")) - 1
+    doc = db["documents"][idx]
+    decrypted = decrypt_data(doc["content"])
+    print(f"Title: {doc['title']}")
+    print(f"Content: {decrypted}")
+    print(f"Checksum: {doc['checksum']}")
+    print(f"Created: {doc['timestamp']}, Modified: {doc['last_modified']}")
+
+def update_document():
+    read_documents()
+    idx = int(input("Select document to update: ")) - 1
+    new_content = input("Enter new content: ")
+    encrypted = encrypt_data(new_content)
+    checksum = calculate_checksum(new_content)
+    timestamp = datetime.datetime.now().isoformat()
+    db["documents"][idx]["content"] = encrypted
+    db["documents"][idx]["checksum"] = checksum
+    db["documents"][idx]["last_modified"] = timestamp
+    save_db()
+    print("Document updated successfully.")
+
+def delete_document():
+    read_documents()
+    idx = int(input("Select document to delete: ")) - 1
+    db["documents"].pop(idx)
+    save_db()
+    print("Document deleted.")
+
+def admin_menu():
+    while True:
+        print("\nAdmin Menu:\n1. Create\n2. Read\n3. View\n4. Update\n5. Delete\n6. Exit")
+        choice = input("Enter choice: ")
+        if choice == '1':
+            create_document()
+        elif choice == '2':
+            read_documents()
+        elif choice == '3':
+            view_document()
+        elif choice == '4':
+            update_document()
+        elif choice == '5':
+            delete_document()
+        elif choice == '6':
+            break
+
+def user_menu():
+    while True:
+        print("\nUser Menu:\n1. Read\n2. View\n3. Exit")
+        choice = input("Enter choice: ")
+        if choice == '1':
+            read_documents()
+        elif choice == '2':
+            view_document()
+        elif choice == '3':
+            break
+
+def login():
+    username = input("Username: ")
+    password = getpass("Password: ")
+    if USERS.get(username) == password:
+        print(f"Welcome, {username}")
+        if username == 'admin':
+            admin_menu()
+        else:
+            user_menu()
+    else:
+        print("Invalid credentials.")
+
+if __name__ == "__main__":
+    login()
